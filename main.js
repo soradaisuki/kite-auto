@@ -400,6 +400,125 @@ const claimStakeRewards = async (access_token, cookieHeader, maxRetries = 5, axi
   }
 };
 
+// Daily Quiz
+const autoDailyQuiz = async (access_token, cookieHeader, wallet, axiosInstance, maxRetries = 3) => {
+  const eoa = wallet;
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const title = `daily_quiz_${today}`;
+
+  try {
+    logger.loading(`🔍 Bắt đầu làm quiz ngày ${today} cho ví ${eoa}...`);
+    
+    const quizHeaders = {
+      ...baseHeaders,
+      Authorization: `Bearer ${access_token}`
+    };
+
+    if (cookieHeader) {
+      quizHeaders['Cookie'] = cookieHeader;
+    }
+
+    let quiz_id;
+    try {
+      const createPayload = {
+        title,
+        num: 1,
+        eoa
+      };
+
+      const createRes = await axiosInstance.post(
+        'https://neo.prod.gokite.ai/v2/quiz/create',
+        createPayload,
+        { headers: quizHeaders }
+      );
+
+      if (createRes.data.error) {
+        logger.error(`❌ Tạo quiz thất bại: ${createRes.data.error}`);
+        return false;
+      }
+
+      quiz_id = createRes.data.data.quiz_id;
+      logger.success(`Quiz đã được tạo: ID ${quiz_id}`);
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
+
+      if (errMsg.includes('already') || err.response?.status === 409) {
+        logger.warn(`⚠️ Quiz ngày ${today} đã tồn tại hoặc đã làm rồi cho ví ${eoa}`);
+        return false;
+      }
+
+      logger.error(`❌ Lỗi tạo quiz: ${errMsg}`);
+      return false;
+    }
+
+    let questionData = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const getUrl = `https://neo.prod.gokite.ai/v2/quiz/get?id=${quiz_id}&eoa=${eoa}`;
+        const getRes = await axiosInstance.get(getUrl, { headers: quizHeaders });
+
+        if (getRes.data.error) {
+          logger.error(`❌ Lỗi lấy quiz: ${getRes.data.error}`);
+          return false;
+        }
+
+        const questions = getRes.data.data.question;
+        if (!questions || questions.length === 0) {
+          logger.warn(`⚠️ Không có câu hỏi nào trong quiz`);
+          return false;
+        }
+
+        questionData = questions[0];
+        break;
+      } catch (err) {
+        if (attempt === maxRetries) {
+          logger.error(`❌ Lỗi get quiz sau ${maxRetries} lần: ${err.message}`);
+          return false;
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+
+    const { question_id, answer } = questionData;
+
+    const submitPayload = {
+      quiz_id,
+      question_id,
+      answer,
+      finish: true,
+      eoa
+    };
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const submitRes = await axiosInstance.post(
+          'https://neo.prod.gokite.ai/v2/quiz/submit',
+          submitPayload,
+          { headers: quizHeaders }
+        );
+
+        const result = submitRes.data?.data?.result;
+        if (result === 'RIGHT') {
+          logger.success(`🎉 Đã hoàn thành quiz với kết quả đúng`);
+          return true;
+        } else {
+          logger.warn(`⚠️ Đáp án không đúng hoặc đã nộp: ${result}`);
+          return false;
+        }
+      } catch (err) {
+        if (attempt === maxRetries) {
+          logger.error(`❌ Submit thất bại sau ${maxRetries} lần: ${err.message}`);
+          return false;
+        }
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+  } catch (err) {
+    logger.error(`❌ Lỗi chung trong quá trình làm quiz: ${err.message}`);
+    return false;
+  }
+};
+
 const login = async (wallet, neo_session = null, refresh_token = null, axiosInstance, maxRetries = 3) => {
   const url = 'https://neo.prod.gokite.ai/v2/signin';
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -686,7 +805,10 @@ const processWallet = async (index, privateKey, proxyList, userAgents, promptGen
   }
 
   await stakeToken(access_token, cookieHeader, 5, axiosInstance);
+  
   await claimStakeRewards(access_token, cookieHeader, 5, axiosInstance);
+
+  await autoDailyQuiz(access_token, cookieHeader, wallet.address, axiosInstance, 3);
 
   for (const agent of agents) {
     logger.agent(`\n----- ${agent.name.toUpperCase()} -----`);

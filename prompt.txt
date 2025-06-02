@@ -1,0 +1,16 @@
+[Professor]
+Explain Kite AI tokenomics in detail
+What is the role of AI in blockchain technology?
+How does Kite AI ensure data privacy?
+What are the benefits of decentralized AI systems?
+
+[Crypto Buddy]
+What are today’s top crypto movers?
+Which altcoins should I watch this week?
+What’s the market sentiment for Bitcoin today?
+Any new DeFi projects worth checking out?
+
+[Sherlock]
+Analyze this transaction: 0x252c02bded9a24426219248c9c1b065b752d3cf8bedf4902ed62245ab950895b
+Is this address safe? 0x7c3dD8E62A7C32c04172042e0Ec4C42428d57958
+Check the security of this contract: 0x7c3dD8E62A7C32c04172042e0Ec4C42428d57958
